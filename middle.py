@@ -9,7 +9,9 @@ from streamlit_folium import st_folium
 import streamlit.components.v1 as components
 from math import radians, cos, sin, asin, sqrt
 from streamlit_js_eval import get_geolocation
+from dotenv import load_dotenv
 
+load_dotenv()  # .env 로드
 # -----------------------------------------------------------------------------
 # 1. 설정 및 옵션 정의
 # -----------------------------------------------------------------------------
@@ -32,10 +34,11 @@ FLAG_COLS_SQL = ", ".join(FILTER_OPTIONS.keys())
 
 ######################## 개인마다 DB 비밀번호 수정하세요 #########################
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "root",
-    "database": "bluehands_db",
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT", "3306")),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_NAME"),
     "charset": "utf8mb4",
 }
 
@@ -108,28 +111,37 @@ def render_paginated_table(rows_all: list[dict]):
     total = len(rows_all)
     total_pages = max(1, math.ceil(total / PAGE_SIZE))
 
+    # page 초기화
     if "page" not in st.session_state:
         st.session_state.page = 1
 
+    # ✅ (핵심) 현재 page가 총 페이지를 넘으면 마지막 페이지로 보정
+    st.session_state.page = max(1, min(st.session_state.page, total_pages))
     page_now = st.session_state.page
+
     start = (page_now - 1) * PAGE_SIZE
     end = start + PAGE_SIZE
 
-    # 1) 표 출력
+    # 표 출력
     render_hy_table_page(rows_all[start:end])
 
-    # 2) 표 바로 아래 + 중앙정렬 페이지 토글
+    # 페이지 옵션
+    options = list(range(1, total_pages + 1))  # 항상 최소 1개
+
+    # ✅ (핵심) index 안전화
+    index = options.index(page_now)  # page_now는 이미 보정됨
+
+    # 표 바로 아래 + 중앙정렬
     left, center, right = st.columns([1, 2, 1])
     with center:
         selected = st.radio(
             label="",
-            options=list(range(1, total_pages + 1)),
-            index=page_now - 1,
+            options=options,
+            index=index,
             horizontal=True,
             key="page_radio",
         )
 
-    # 3) 선택 변경 반영
     if selected != page_now:
         st.session_state.page = selected
         st.rerun()

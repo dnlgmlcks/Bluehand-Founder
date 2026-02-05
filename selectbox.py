@@ -1,16 +1,21 @@
 import streamlit as st
 import mysql.connector
 import pandas as pd
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 st.title("📊 DB 테이블 보기 + 가까운 지점 4곳")
+conn = {
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT", "3306")),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_NAME"),
+    "charset": "utf8mb4",
+}
 
-conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="root",
-    database="bluehands_db",
-    charset="utf8mb4"
-)
 
 # 1) 후보 목록 가져오기
 name_list_df = pd.read_sql("""
