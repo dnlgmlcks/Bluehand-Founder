@@ -46,6 +46,9 @@ DB_CONFIG = {
     "charset": "utf8mb4",
 }
 
+def get_conn():
+    return mysql.connector.connect(**DB_CONFIG)
+
 # 한 페이지당 보여줄 목록의 개수 설정
 PAGE_SIZE = 5
 
@@ -127,53 +130,82 @@ def render_hy_table_page(rows_page: list[dict]):
 
 
 def render_paginated_table(rows_all: list[dict]):
-    """
-    전체 데이터를 받아 페이지네이션(페이지 나누기) 처리를 하고 테이블을 출력하는 함수입니다.
-    """
     total = len(rows_all)
-    # 전체 페이지 수 계산 (올림 처리)
     total_pages = max(1, math.ceil(total / PAGE_SIZE))
 
-    # 세션 상태(session_state)에 현재 페이지 번호가 없으면 1로 초기화
     if "page" not in st.session_state:
         st.session_state.page = 1
 
-    # 현재 페이지 번호가 유효 범위를 벗어나지 않도록 보정 (검색 결과가 줄어들었을 때 에러 방지)
     st.session_state.page = max(1, min(st.session_state.page, total_pages))
     page_now = st.session_state.page
 
-    # 현재 페이지에 해당하는 데이터 슬라이싱 (start ~ end)
+    # 현재 페이지 데이터 렌더
     start = (page_now - 1) * PAGE_SIZE
     end = start + PAGE_SIZE
-
-    # 슬라이싱된 데이터로 테이블 렌더링 함수 호출
     render_hy_table_page(rows_all[start:end])
 
-    # 페이지 번호 선택 버튼 생성 (라디오 버튼 활용)
-    options = list(range(1, total_pages + 1))
-    index = options.index(page_now)  # 현재 페이지의 인덱스 찾기
+    # ===============================
+    # ✅ 세션 기반 블록 페이징 (리셋 X)
+    # ===============================
+    BLOCK_SIZE = 5
+    current_block = (page_now - 1) // BLOCK_SIZE
+    start_page = current_block * BLOCK_SIZE + 1
+    end_page = min(start_page + BLOCK_SIZE - 1, total_pages)
 
-    # UI 레이아웃: 중앙 정렬을 위해 컬럼 분할
-    left, center, right = st.columns([1, 2, 1])
-    with center:
-        selected = st.radio(
-            label="",
-            options=options,
-            index=index,
-            horizontal=True,  # 가로로 배치
-            key="page_radio",
-        )
+    # 버튼 스타일(작게/촘촘)
+    st.markdown("""
+    <style>
+      div[data-testid="stButton"] > button {
+        padding: 0.3rem 0.6rem;
+        min-width: 2.2rem;
+        border-radius: 10px;
+      }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # 사용자가 다른 페이지를 선택하면 세션 상태 업데이트 후 화면 리로드(rerun)
-    if selected != page_now:
-        st.session_state.page = selected
-        st.rerun()
+    # 가운데에 모으기
+    left_sp, center_sp, right_sp = st.columns([10, 3, 10], gap="small")
 
+    with center_sp:
+        items = []
 
-def get_conn():
-    """DB 연결 객체를 생성하여 반환합니다."""
-    return mysql.connector.connect(**DB_CONFIG)
+        has_prev = start_page > 1
+        has_next = end_page < total_pages
 
+        if has_prev:
+            items.append(("PREV", "pg_prev_block"))   # 라벨은 아래에서 «로 표시
+
+        for p in range(start_page, end_page + 1):
+            items.append((p, f"pg_{p}"))
+
+        if has_next:
+            items.append(("NEXT", "pg_next_block"))
+
+        cols = st.columns([1] * len(items), gap="small")
+
+        for i, (val, key) in enumerate(items):
+            # « 이전 블록
+            if val == "PREV":
+                if cols[i].button("«", key=key):
+                    st.session_state.page = start_page - 1
+                    st.rerun()
+
+            # » 다음 블록
+            elif val == "NEXT":
+                if cols[i].button("»", key=key):
+                    st.session_state.page = end_page + 1
+                    st.rerun()
+
+            # 숫자 페이지
+            else:
+                p = int(val)
+                if cols[i].button(
+                    str(p),
+                    type="primary" if p == page_now else "secondary",
+                    key=key
+                ):
+                    st.session_state.page = p
+                    st.rerun()
 
 # -----------------------------------------------------------------------------
 # 2. 유틸리티 함수
@@ -369,7 +401,9 @@ with st.sidebar:
         st.write("")
         # 검색 버튼 클릭 시 스크롤 이동
         if st.button("검색", use_container_width=True):
-            if search_query: scroll_down()
+            st.session_state.page = 1
+            if search_query:
+                scroll_down()
 
 # (4) 결과 조회 및 화면 표시
 # 검색어, 필터, 지역 선택 중 하나라도 있으면 검색 실행
